@@ -6,7 +6,7 @@ use std::{
 
 use clap::{App, Arg};
 
-type Res<T> = Result<T, Box<dyn Error>>;
+pub type Res<T> = Result<T, Box<dyn Error>>;
 
 #[derive(Debug)]
 pub struct Config {
