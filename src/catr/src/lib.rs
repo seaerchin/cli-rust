@@ -56,8 +56,9 @@ fn print_output<T: BufRead>(reader: T, number_lines: bool, number_nonblank: bool
                 idx += 1;
             } else if number_lines {
                 println!("{:>6}\t{}", idx, line);
+                idx += 1;
             } else {
-                println!("{}", line)
+                println!("{}", line);
             }
         }
     }
