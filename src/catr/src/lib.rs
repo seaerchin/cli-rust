@@ -74,7 +74,6 @@ pub fn get_args() -> Res<Config> {
                 .required(true)
                 .value_name("FILES")
                 .help("Input files")
-                .required(true)
                 .min_values(1),
         )
         .arg(Arg::with_name("number_lines").short("n").long("number"))
