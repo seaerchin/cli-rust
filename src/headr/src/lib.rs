@@ -1,55 +1,78 @@
 use clap::{App, Arg};
 use std::{
     error::Error,
-    fs::{self, File},
-    io::{BufRead, BufReader, Read, Stdin},
+    fs::{self},
+    io::{BufRead, BufReader},
+    ops::Index,
 };
 
 pub type Res<T> = Result<T, Box<dyn Error>>;
 
-enum InputType {
-    File((BufReader<File>, String)),
-    Stdin(BufReader<Stdin>),
-}
+type Files = Vec<String>;
 
 #[derive(Debug)]
 pub struct Config {
-    files: Vec<String>,
+    files: Option<Files>,
     lines: usize,
     bytes: Option<usize>,
 }
 
-impl Read for InputType {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        match self {
-            InputType::File((f, _)) => f.read(buf),
-            InputType::Stdin(s) => s.read(buf),
+enum Mode {
+    Lines(usize),
+    Bytes(usize),
+}
+
+fn get_mode(c: &Config) -> Mode {
+    if let Some(b) = c.bytes {
+        return Mode::Bytes(b);
+    }
+    return Mode::Lines(c.lines);
+}
+
+struct Printer {
+    mode: Mode,
+}
+
+impl Printer {
+    fn new(mode: Mode) -> Printer {
+        return Printer { mode };
+    }
+
+    fn print(&self, path: Option<String>) {
+        let filename = path.clone().unwrap_or("stdin".into());
+        match open(&path) {
+            Ok(reader) => match self.mode {
+                Mode::Lines(num_lines) => print_lines(reader, num_lines),
+                Mode::Bytes(num_bytes) => print_bytes(reader, num_bytes),
+            },
+            // Couldn't open the file
+            Err(e) => eprintln!("{}: {}", filename, e),
         }
     }
 }
 
-impl BufRead for InputType {
-    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
-        match self {
-            InputType::File((f, _)) => f.fill_buf(),
-            InputType::Stdin(s) => s.fill_buf(),
-        }
-    }
-
-    fn consume(&mut self, amt: usize) {
-        match self {
-            InputType::File((f, _)) => f.consume(amt),
-            InputType::Stdin(s) => s.consume(amt),
+fn print_lines<R: BufRead>(reader: R, num_lines: usize) {
+    for line_result in reader.lines().take(num_lines) {
+        match line_result {
+            Ok(line) => println!("{}", line),
+            Err(_) => println!("Something"),
         }
     }
 }
 
-impl InputType {
-    fn print(&self) {
-        if let InputType::File((_, filename)) = self {
-            // print an empty line before this and terminate the output with a newline
-            println!("\n==> {} <==", filename);
-        }
+fn print_bytes<R: BufRead>(reader: R, num_bytes: usize) {
+    // take the required number of bytes
+    let bytes: Vec<_> = reader
+        .bytes()
+        .filter(|i| i.is_ok())
+        .take(num_bytes)
+        .map(|i| i.unwrap())
+        .collect();
+
+    let s = String::from_utf8_lossy(&bytes);
+
+    for c in s.chars().into_iter() {
+        print!("{}", (c));
     }
 }
 
@@ -62,7 +85,6 @@ pub fn get_args() -> Res<Config> {
             Arg::with_name("files")
                 .value_name("FILE")
                 .help("input files")
-                .default_value("-")
                 .multiple(true),
         )
         .arg(
@@ -98,10 +120,7 @@ pub fn get_args() -> Res<Config> {
 
     // technically we can check but if they mess up here, it's easier to panic and restart
     Ok(Config {
-        files: matches
-            .values_of_lossy("files")
-            .or_else(|| Some(vec!["-".to_string()]))
-            .unwrap(),
+        files: matches.values_of_lossy("files"),
         // just panic if they don't pass in a proper value - not much we can do anyway
         lines: lines.unwrap(),
         bytes,
@@ -120,61 +139,32 @@ fn parse_positive(n: &str) -> Res<usize> {
  * read out the first n lines/bytes
  */
 pub fn run(c: Config) -> Res<()> {
-    let num_files = c.files.len();
-    for filename in c.files {
-        match open(&filename) {
-            Ok(file) => {
-                if num_files > 1 {
-                    file.print();
-                }
+    let mode = get_mode(&c);
+    let printer = Printer::new(mode);
 
-                print_output(file, c.lines, c.bytes)
+    match c.files {
+        Some(files) => {
+            if files.len() > 1 {
+                for file in files {
+                    println!("==> {} <==", file);
+                    printer.print(Some(file));
+                }
+            } else {
+                printer.print(Some(files.index(0).to_string()));
             }
-            Err(e) => eprintln!("{}: {}", filename, e),
         }
+        None => printer.print(None),
     }
+
     Ok(())
 }
 
-fn open(path: &str) -> Res<Box<InputType>> {
-    if path == "" || path == "-" {
-        return Ok(Box::new(InputType::Stdin(BufReader::new(std::io::stdin()))));
-    }
-
-    let file_result = fs::File::open(path);
-    match file_result {
-        Ok(file) => {
-            return Ok(Box::new(InputType::File((
-                BufReader::new(file),
-                String::from(path),
-            ))))
-        }
-        Err(e) => return Err(Box::new(e)),
-    };
-}
-
-fn print_output<T: BufRead>(reader: T, num_lines: usize, num_bytes: Option<usize>) {
-    // this is pretty bad code tbh
-    if let Some(b) = num_bytes {
-        // take the required number of bytes
-        let bytes: Vec<_> = reader
-            .bytes()
-            .filter(|i| i.is_ok())
-            .take(b)
-            .map(|i| i.unwrap())
-            .collect();
-
-        let s = String::from_utf8_lossy(&bytes);
-
-        for c in s.chars().into_iter() {
-            print!("+{}", (c));
-        }
-    } else {
-        for line_result in reader.lines().take(num_lines) {
-            match line_result {
-                Ok(line) => println!("{}", line),
-                Err(_) => println!("Something"),
-            }
+fn open(p: &Option<String>) -> Res<Box<dyn BufRead>> {
+    if let Some(path) = p {
+        match fs::File::open(path) {
+            Ok(f) => return Ok(Box::new(BufReader::new(f))),
+            Err(e) => return Err(Box::new(e)),
         }
     }
+    return Ok(Box::new(BufReader::new(std::io::stdin())));
 }
