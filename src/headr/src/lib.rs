@@ -51,12 +51,15 @@ impl Printer {
     }
 }
 
-fn print_lines<R: BufRead>(reader: R, num_lines: usize) {
-    for line_result in reader.lines().take(num_lines) {
-        match line_result {
-            Ok(line) => println!("{}", line),
-            Err(_) => println!("Something"),
+fn print_lines<R: BufRead>(mut reader: R, num_lines: usize) {
+    let mut buf = String::new();
+    for _ in 0..num_lines {
+        let bytes = reader.read_line(&mut buf).unwrap();
+        if bytes == 0 {
+            break;
         }
+        print!("{}", buf);
+        buf.clear();
     }
 }
 
@@ -144,9 +147,10 @@ pub fn run(c: Config) -> Res<()> {
 
     match c.files {
         Some(files) => {
-            if files.len() > 1 {
+            let file_len = files.len();
+            if file_len > 1 {
                 for file in files {
-                    println!("==> {} <==", file);
+                    println!("{}==> {} <==", if file_len > 0 { "\n" } else { "" }, file);
                     printer.print(Some(file));
                 }
             } else {
