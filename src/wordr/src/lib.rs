@@ -188,16 +188,6 @@ pub fn run(config: Config) -> Res<()> {
     Ok(())
 }
 
-trait Default<T> {
-    fn default(self) -> bool;
-}
-
-impl Default<&str> for Option<&str> {
-    fn default(self) -> bool {
-        return self.map(|_| true).unwrap_or(false);
-    }
-}
-
 fn count_bytes(source: &str) -> u128 {
     source.as_bytes().len().try_into().unwrap()
 }
