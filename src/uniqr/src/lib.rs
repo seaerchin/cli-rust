@@ -2,7 +2,7 @@ use clap::{App, Arg};
 use std::{
     error::Error,
     fs::File,
-    io::{self, BufRead, BufReader, Write},
+    io::{self, BufRead, BufReader, Error as ioError, Write},
     vec,
 };
 
@@ -100,7 +100,12 @@ impl Counter {
 pub fn get_args() -> Res<Config> {
     let matches = App::new("uniqr")
         .about("Rust uniq")
-        .arg(Arg::with_name("count").short("c").takes_value(false))
+        .arg(
+            Arg::with_name("count")
+                .short("c")
+                .long("count")
+                .takes_value(false),
+        )
         .arg(Arg::with_name("input").default_value("-").takes_value(true))
         .arg(Arg::with_name("output").requires("input").takes_value(true))
         .arg(
@@ -131,16 +136,23 @@ pub fn get_args() -> Res<Config> {
 }
 
 pub fn run(config: Config) -> Res<()> {
-    let config = get_args()?;
     let counter = config.get_counter();
     let mut buf: Vec<u8> = vec![];
     let _ = open(&config.in_file)?.read_to_end(&mut buf);
 
     let s = String::from_utf8_lossy(&buf);
+
+    let has_trailing_newline = s.ends_with("\n");
+
     let counts = counter.count(&s);
     let display_data = counter.format(counts);
+    let formatted_data = format!(
+        "{}{}",
+        display_data,
+        if has_trailing_newline { "\n" } else { "" }
+    );
 
-    write(&config.out_file.unwrap_or("".to_string()), &display_data)
+    write(&config.out_file.unwrap_or("".to_string()), &formatted_data)
 }
 
 fn write(path: &str, data: &str) -> Res<()> {
@@ -150,7 +162,7 @@ fn write(path: &str, data: &str) -> Res<()> {
         Box::new(File::create(path)?)
     };
 
-    f.write_all(str::as_bytes(data));
+    let _ = f.write_all(str::as_bytes(&data));
     Ok(())
 }
 
@@ -161,7 +173,10 @@ fn open(path: &str) -> Res<Box<dyn BufRead>> {
     } else {
         match File::open(path) {
             Ok(f) => Ok(Box::new(BufReader::new(f))),
-            Err(e) => Err(Box::new(e)),
+            Err(e) => Err(Box::new(ioError::new(
+                io::ErrorKind::NotFound,
+                format!("uniqr: {}: {}", path, e),
+            ))),
         }
     }
 }
