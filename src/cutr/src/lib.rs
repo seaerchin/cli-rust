@@ -59,14 +59,16 @@ pub fn get_args() -> Res<Config> {
 
     let files = matches.values_of_lossy("files").unwrap();
     let delim = matches.value_of("delim").unwrap();
-    let extract: Extract = [
-        matches.values_of_lossy("fields"),
-        matches.values_of_lossy("bytes"),
-        matches.values_of_lossy("chars"),
-    ]
-    .iter()
-    .reduce(todo!())
-    .unwrap();
+    let extract: Extract;
+
+    if let Some(v) = matches.values_of_lossy("fields") {
+        extract = Fields(to_position_list(v));
+    } else if let Some(v) = matches.values_of_lossy("bytes") {
+        extract = Bytes(to_position_list(v));
+    } else {
+        let v = matches.values_of_lossy("chars").unwrap();
+        extract = Chars(to_position_list(v));
+    }
 
     Ok(Config {
         files,
@@ -91,5 +93,35 @@ pub fn run(c: Config) -> Res<()> {
 }
 
 fn to_position_list(ls: Vec<String>) -> PositionList {
-    todo!()
+    // There are 4 possible cases here for raw cli input
+    // 1: x - y -> [x, y]
+    // 2: x, y, z
+    // 3: x
+    // 4: a-b, c-d, e-f
+
+    // This is case 1 | 3
+    if ls.len() == 1 {
+        return vec![to_range(&ls[0])];
+    } else {
+        return ls.iter().map(|s| to_range(s)).collect();
+    }
+}
+
+// converts a string of either x | x - y into a suitable range
+fn to_range(s: &str) -> Range<usize> {
+    let split: Vec<_> = s.split("-").collect();
+    // exactly 1 item
+    if split.len() == 1 {
+        let lower: usize = split[0].parse().unwrap();
+        return lower..lower + 1;
+    }
+
+    // 2 items separated by -
+    let lower: usize = split[0].parse().unwrap();
+    let upper: usize = split[1].parse().unwrap();
+    return lower..upper + 1;
+}
+
+pub fn parse_pos(range: &str) -> Res<PositionList> {
+    unimplemented!();
 }
