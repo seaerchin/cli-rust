@@ -113,15 +113,17 @@ fn to_range(s: &str) -> Range<usize> {
     // exactly 1 item
     if split.len() == 1 {
         let lower: usize = split[0].parse().unwrap();
-        return lower..lower + 1;
+        return lower - 1..lower;
     }
 
     // 2 items separated by -
     let lower: usize = split[0].parse().unwrap();
     let upper: usize = split[1].parse().unwrap();
-    return lower..upper + 1;
+    return lower - 1..upper;
 }
 
+// wrapper over to_position_list
+// does checking first
 pub fn parse_pos(range: &str) -> Res<PositionList> {
     unimplemented!();
 }
